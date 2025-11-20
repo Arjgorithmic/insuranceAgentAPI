@@ -70,6 +70,22 @@ async def get_claims():
     return []
 
 
+@app.get("/claims/{claim_number}", response_model=Claim)
+async def get_claim(claim_number: str):
+    """
+    Retrieve a specific claim by claim number.
+    """
+    response = (
+        supabase.table(TABLE_NAME)
+        .select("*")
+        .eq("claim_number", claim_number)
+        .execute()
+    )
+    if response.data and len(response.data) > 0:
+        return response.data[0]
+    raise HTTPException(status_code=404, detail=f"Claim {claim_number} not found.")
+
+
 @app.post("/claims", response_model=Claim)
 async def create_claim(claim: Claim):
     """
