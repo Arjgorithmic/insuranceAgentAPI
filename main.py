@@ -18,27 +18,19 @@ key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABA
 supabase: Client = create_client(url, key)
 
 TABLE_NAME = os.environ.get("TABLE_NAME")
-CUSTOMERS_TABLE = "customers"
 
 
-class Customer(BaseModel):
-    customer_id: Optional[int] = None
-    first_name: str
-    last_name: str
+class PolicySearchRequest(BaseModel):
+    claimant_first_name: Optional[str] = None
+    claimant_last_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    postal_code: Optional[str] = None
-    date_of_birth: Optional[date] = None
-    created_at: Optional[datetime] = None
-    password: Optional[str] = None
+    policy_number: Optional[str] = None
 
 
-class CustomerLogin(BaseModel):
-    email: str
-    password: str
+class VehicleSearchRequest(BaseModel):
+    vin: str
+    policy_number: str
 
 
 class Claim(BaseModel):
@@ -136,70 +128,85 @@ async def delete_claim(claim_number: str):
     raise HTTPException(status_code=404, detail=f"Claim {claim_number} not found.")
 
 
-# Customer endpoints
-@app.post("/customers", response_model=Customer)
-async def create_customer(customer: Customer):
+@app.post("/policies/search", response_model=list[dict])
+async def search_policies(search_params: PolicySearchRequest):
     """
-    Create a new customer in the customers table.
+    Search for policies using:
+    - Claimant full name (first and last name)
+    - Contact information (phone or email)
+    - Policy number
+
+    At least one search parameter must be provided.
+    Returns all matching policy rows from the policies table.
     """
-    customer_data = customer.dict(exclude_unset=True, exclude={"customer_id"})
-    for key, value in customer_data.items():
-        if isinstance(value, (datetime, date)):
-            customer_data[key] = value.isoformat()
+    # Validate that at least one parameter is provided
+    if not any(
+        [
+            search_params.claimant_first_name,
+            search_params.claimant_last_name,
+            search_params.phone,
+            search_params.email,
+            search_params.policy_number,
+        ]
+    ):
+        raise HTTPException(
+            status_code=400, detail="At least one search parameter must be provided"
+        )
 
-    response = supabase.table(CUSTOMERS_TABLE).insert(customer_data).execute()
-    if response.data:
-        return response.data[0]
-    raise HTTPException(status_code=400, detail="Customer could not be created.")
+    # Build the query
+    query = supabase.table("policies").select("*")
+
+    if search_params.policy_number:
+        query = query.eq("policy_number", search_params.policy_number)
+
+    if search_params.claimant_first_name:
+        query = query.ilike(
+            "named_insured_first", f"%{search_params.claimant_first_name}%"
+        )
+
+    if search_params.claimant_last_name:
+        query = query.ilike(
+            "named_insured_last", f"%{search_params.claimant_last_name}%"
+        )
+
+    if search_params.phone:
+        query = query.eq("named_insured_phone", search_params.phone)
+
+    if search_params.email:
+        query = query.ilike("named_insured_email", f"%{search_params.email}%")
+
+    # Execute policy query
+    response = query.execute()
+
+    if not response.data:
+        raise HTTPException(
+            status_code=404, detail="No policies found matching the criteria"
+        )
+
+    return response.data
 
 
-@app.get("/customers/{customer_id}", response_model=Customer)
-async def get_customer(customer_id: int):
+@app.post("/vehicles/search", response_model=dict)
+async def search_vehicle(search_params: VehicleSearchRequest):
     """
-    Retrieve a specific customer by customer ID.
+    Fetch a specific vehicle record using VIN and policy number.
+    Returns the complete vehicle data row.
     """
     response = (
-        supabase.table(CUSTOMERS_TABLE)
+        supabase.table("vehicles")
         .select("*")
-        .eq("customer_id", customer_id)
+        .eq("vin", search_params.vin)
+        .eq("policy_number", search_params.policy_number)
         .execute()
     )
-    if response.data and len(response.data) > 0:
-        return response.data[0]
-    raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
 
+    if not response.data or len(response.data) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Vehicle with VIN {search_params.vin} and policy number {search_params.policy_number} not found",
+        )
 
-@app.post("/customers/login", response_model=Customer)
-async def login_customer(credentials: CustomerLogin):
-    """
-    Authenticate customer with email and password, return full customer data if valid.
-    """
-    response = (
-        supabase.table(CUSTOMERS_TABLE)
-        .select("*")
-        .eq("email", credentials.email)
-        .eq("password", credentials.password)
-        .execute()
-    )
-    if response.data and len(response.data) > 0:
-        return response.data[0]
-    raise HTTPException(status_code=401, detail="Invalid email or password.")
-
-
-@app.delete("/customers/{customer_id}", response_model=dict)
-async def delete_customer(customer_id: int):
-    """
-    Delete a customer from the customers table by customer_id.
-    """
-    response = (
-        supabase.table(CUSTOMERS_TABLE)
-        .delete()
-        .eq("customer_id", customer_id)
-        .execute()
-    )
-    if response.data:
-        return {"message": f"Customer {customer_id} deleted successfully."}
-    raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
+    return response.data[0]
 
 
 if __name__ == "__main__":
