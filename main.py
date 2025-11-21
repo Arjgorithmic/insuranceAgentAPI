@@ -18,6 +18,27 @@ key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABA
 supabase: Client = create_client(url, key)
 
 TABLE_NAME = os.environ.get("TABLE_NAME")
+CUSTOMERS_TABLE = "customers"
+
+
+class Customer(BaseModel):
+    customer_id: Optional[int] = None
+    first_name: str
+    last_name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    created_at: Optional[datetime] = None
+    password: Optional[str] = None
+
+
+class CustomerLogin(BaseModel):
+    email: str
+    password: str
 
 
 class Claim(BaseModel):
@@ -113,6 +134,72 @@ async def delete_claim(claim_number: str):
     if response.data:
         return {"message": f"Claim {claim_number} deleted successfully."}
     raise HTTPException(status_code=404, detail=f"Claim {claim_number} not found.")
+
+
+# Customer endpoints
+@app.post("/customers", response_model=Customer)
+async def create_customer(customer: Customer):
+    """
+    Create a new customer in the customers table.
+    """
+    customer_data = customer.dict(exclude_unset=True, exclude={"customer_id"})
+    for key, value in customer_data.items():
+        if isinstance(value, (datetime, date)):
+            customer_data[key] = value.isoformat()
+
+    response = supabase.table(CUSTOMERS_TABLE).insert(customer_data).execute()
+    if response.data:
+        return response.data[0]
+    raise HTTPException(status_code=400, detail="Customer could not be created.")
+
+
+@app.get("/customers/{customer_id}", response_model=Customer)
+async def get_customer(customer_id: int):
+    """
+    Retrieve a specific customer by customer ID.
+    """
+    response = (
+        supabase.table(CUSTOMERS_TABLE)
+        .select("*")
+        .eq("customer_id", customer_id)
+        .execute()
+    )
+    if response.data and len(response.data) > 0:
+        return response.data[0]
+    raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
+
+
+@app.post("/customers/login", response_model=Customer)
+async def login_customer(credentials: CustomerLogin):
+    """
+    Authenticate customer with email and password, return full customer data if valid.
+    """
+    response = (
+        supabase.table(CUSTOMERS_TABLE)
+        .select("*")
+        .eq("email", credentials.email)
+        .eq("password", credentials.password)
+        .execute()
+    )
+    if response.data and len(response.data) > 0:
+        return response.data[0]
+    raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+
+@app.delete("/customers/{customer_id}", response_model=dict)
+async def delete_customer(customer_id: int):
+    """
+    Delete a customer from the customers table by customer_id.
+    """
+    response = (
+        supabase.table(CUSTOMERS_TABLE)
+        .delete()
+        .eq("customer_id", customer_id)
+        .execute()
+    )
+    if response.data:
+        return {"message": f"Customer {customer_id} deleted successfully."}
+    raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
 
 
 if __name__ == "__main__":
