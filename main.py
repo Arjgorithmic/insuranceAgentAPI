@@ -231,6 +231,26 @@ async def search_vehicle(search_params: VehicleSearchRequest):
     return response.data[0]
 
 
+@app.get("/triagefetch", response_model=list[Claim])
+async def get_latest_claims_for_triage():
+    """
+    Fetch the latest 6 claims where adjuster_id is empty/null.
+    Returns claims ordered by created_timestamp in descending order.
+    """
+    response = (
+        supabase.table(TABLE_NAME)
+        .select("*")
+        .is_("adjuster_id", "null")
+        .order("created_timestamp", desc=True)
+        .limit(6)
+        .execute()
+    )
+
+    if response.data:
+        return response.data
+    return []
+
+
 @app.post("/fortriage", response_model=Claim)
 async def get_claim_for_triage(triage_params: TriageRequest):
     """
