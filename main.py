@@ -33,6 +33,12 @@ class VehicleSearchRequest(BaseModel):
     policy_number: str
 
 
+class TriageRequest(BaseModel):
+    claim_number: str
+    first_name: str
+    last_name: str
+
+
 class Claim(BaseModel):
     claim_number: Optional[str] = None
     claim_status: Optional[str] = None
@@ -220,6 +226,30 @@ async def search_vehicle(search_params: VehicleSearchRequest):
         raise HTTPException(
             status_code=404,
             detail=f"Vehicle with VIN {search_params.vin} and policy number {search_params.policy_number} not found",
+        )
+
+    return response.data[0]
+
+
+@app.post("/fortriage", response_model=Claim)
+async def get_claim_for_triage(triage_params: TriageRequest):
+    """
+    Fetch claim details for triage using claim number, first name, and last name.
+    Returns the claim details if all parameters match.
+    """
+    response = (
+        supabase.table(TABLE_NAME)
+        .select("*")
+        .eq("claim_number", triage_params.claim_number)
+        .eq("claimant_first_name", triage_params.first_name)
+        .eq("claimant_last_name", triage_params.last_name)
+        .execute()
+    )
+
+    if not response.data or len(response.data) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Claim not found with the provided claim number and claimant name",
         )
 
     return response.data[0]
