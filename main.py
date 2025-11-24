@@ -255,6 +255,63 @@ async def get_claim_for_triage(triage_params: TriageRequest):
     return response.data[0]
 
 
+@app.put("/fortriage/{claim_number}", response_model=Claim)
+async def update_claim_for_triage(claim_number: str, claim: Claim):
+    """
+    Update claim data for triage using claim number.
+    Only updates the fields that are provided in the request.
+    Protected fields (claim_number, first name, last name, policy_number) cannot be modified.
+    """
+    # Exclude unset fields, none values, and claim_number from update
+    update_data = claim.dict(exclude_unset=True, exclude_none=True)
+
+    # List of protected fields that cannot be updated
+    protected_fields = [
+        "claim_number",
+        "claimant_first_name",
+        "claimant_last_name",
+        "claimant_phone",
+        "claimant_email",
+        "policy_number",
+        "vehicle_vin",
+    ]
+
+    # Remove protected fields from update
+    for field in protected_fields:
+        if field in update_data:
+            del update_data[field]
+
+    # Filter out empty strings and placeholder values like "string"
+    filtered_data = {}
+    for key, value in update_data.items():
+        # Skip empty strings and common placeholder values
+        if isinstance(value, str) and (value == "" or value.lower() == "string"):
+            continue
+        # Convert datetime and date objects to ISO format
+        if isinstance(value, (datetime, date)):
+            filtered_data[key] = value.isoformat()
+        else:
+            filtered_data[key] = value
+
+    if not filtered_data:
+        raise HTTPException(
+            status_code=400, detail="No valid fields provided for update"
+        )
+
+    # Update the claim
+    response = (
+        supabase.table(TABLE_NAME)
+        .update(filtered_data)
+        .eq("claim_number", claim_number)
+        .execute()
+    )
+
+    if not response.data or len(response.data) == 0:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_number} not found")
+
+    return response.data[0]
+
+
 if __name__ == "__main__":
     import uvicorn
 
