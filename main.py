@@ -47,6 +47,36 @@ class HistoricalClaimSearchRequest(BaseModel):
     policy_number: str
 
 
+class Triage(BaseModel):
+    claimid: str
+    financial_severity: Optional[int] = None
+    injury_severity: Optional[int] = None
+    complexity_score: Optional[int] = None
+    final_severity_score: Optional[int] = None
+    severity_label: Optional[str] = None
+    fraud_indicators: Optional[bool] = False
+    fraud_notes: Optional[str] = None
+    historical_claims_found: Optional[bool] = False
+    adjuster_id: Optional[str] = None
+    adjuster_name: Optional[str] = None
+    adjuster_email: Optional[str] = None
+    adjuster_phone: Optional[str] = None
+    adjuster_license_state: Optional[str] = None
+    adjuster_specializations: Optional[list[str]] = None
+    adjuster_current_caseload: Optional[int] = None
+    adjuster_caseload_capacity: Optional[int] = None
+    adjuster_customer_satisfaction: Optional[float] = None
+    first_contact_sla: Optional[date] = None
+    inspection_deadline: Optional[date] = None
+    coverage_decision_timeline: Optional[date] = None
+    payment_target_timeline: Optional[date] = None
+    closure_timeline: Optional[date] = None
+    priority_level: Optional[str] = None
+    next_required_actions: Optional[list[str]] = None
+    triage_notes: Optional[str] = None
+    summary_completed: Optional[bool] = False
+
+
 class Claim(BaseModel):
     claim_number: Optional[str] = None
     claim_status: Optional[str] = None
@@ -314,6 +344,37 @@ async def search_historical_claims(search_params: HistoricalClaimSearchRequest):
         )
 
     return response.data
+
+
+@app.post("/triage", response_model=dict)
+async def create_triage(triage: Triage):
+    """
+    Create a new triage record in the triage table.
+    The claimid must reference an existing claim_number from the claims table.
+    """
+    # Exclude unset fields and none values
+    triage_data = triage.dict(exclude_unset=True, exclude_none=True)
+
+    # Filter out empty strings and placeholder values like "string"
+    filtered_data = {}
+    for key, value in triage_data.items():
+        # Skip empty strings and common placeholder values
+        if isinstance(value, str) and (value == "" or value.lower() == "string"):
+            continue
+        # Convert date objects to ISO format
+        if isinstance(value, date):
+            filtered_data[key] = value.isoformat()
+        else:
+            filtered_data[key] = value
+
+    # Validate that claimid is provided
+    if "claimid" not in filtered_data:
+        raise HTTPException(status_code=400, detail="claimid is required")
+
+    response = supabase.table("triage").insert(filtered_data).execute()
+    if response.data:
+        return response.data[0]
+    raise HTTPException(status_code=400, detail="Triage record could not be created.")
 
 
 @app.post("/service-providers/search", response_model=list[dict])
