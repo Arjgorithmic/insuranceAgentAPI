@@ -39,6 +39,10 @@ class TriageRequest(BaseModel):
     last_name: str
 
 
+class ServiceProviderSearchRequest(BaseModel):
+    provider_type: str
+
+
 class Claim(BaseModel):
     claim_number: Optional[str] = None
     claim_status: Optional[str] = None
@@ -273,6 +277,40 @@ async def get_claim_for_triage(triage_params: TriageRequest):
         )
 
     return response.data[0]
+
+
+@app.get("/adjusters", response_model=list[dict])
+async def get_adjusters():
+    """
+    Retrieve all adjusters from the adjusters table.
+    """
+    response = supabase.table("adjusters").select("*").execute()
+    if response.data:
+        return response.data
+    return []
+
+
+@app.post("/service-providers/search", response_model=list[dict])
+async def search_service_providers(search_params: ServiceProviderSearchRequest):
+    """
+    Search for service providers by provider_type.
+    Returns all matching service provider records.
+    """
+    # Execute query
+    response = (
+        supabase.table("service_providers")
+        .select("*")
+        .eq("provider_type", search_params.provider_type)
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No service providers found with provider_type: {search_params.provider_type}",
+        )
+
+    return response.data
 
 
 @app.put("/fortriage/{claim_number}", response_model=Claim)
