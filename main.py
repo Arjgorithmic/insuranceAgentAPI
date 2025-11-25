@@ -43,6 +43,10 @@ class ServiceProviderSearchRequest(BaseModel):
     provider_type: str
 
 
+class HistoricalClaimSearchRequest(BaseModel):
+    policy_number: str
+
+
 class Claim(BaseModel):
     claim_number: Optional[str] = None
     claim_status: Optional[str] = None
@@ -288,6 +292,28 @@ async def get_adjusters():
     if response.data:
         return response.data
     return []
+
+
+@app.post("/historical-claims/search", response_model=list[dict])
+async def search_historical_claims(search_params: HistoricalClaimSearchRequest):
+    """
+    Fetch historical claims based on policy_number.
+    Returns all historical claims associated with the given policy number.
+    """
+    response = (
+        supabase.table("historical_claims")
+        .select("*")
+        .eq("policy_number", search_params.policy_number)
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No historical claims found for policy_number: {search_params.policy_number}",
+        )
+
+    return response.data
 
 
 @app.post("/service-providers/search", response_model=list[dict])
